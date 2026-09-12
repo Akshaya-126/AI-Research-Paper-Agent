@@ -1,0 +1,9 @@
+arxiv>=2.2.0
+requests>=2.32.0
+python-dotenv>=1.0.1
+supabase>=2.15.0
+sentence-transformers>=4.1.0
+torch>=2.2.0
+numpy>=1.26.0
+pypdf>=5.0.0
+python-telegram-bot>=22.0
