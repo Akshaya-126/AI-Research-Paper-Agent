@@ -11,8 +11,8 @@ VECTOR_TOP_K = int(os.getenv("VECTOR_TOP_K", "20"))
 LEXICAL_TOP_K = int(os.getenv("LEXICAL_TOP_K", "20"))
 FINAL_TOP_K = int(os.getenv("FINAL_TOP_K", "5"))
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen2.5:7b")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 

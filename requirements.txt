@@ -7,3 +7,10 @@ torch>=2.2.0
 numpy>=1.26.0
 pypdf>=5.0.0
 python-telegram-bot>=22.0
+
+# Gemini LLM
+google-genai>=1.0.0
+
+# Online Telegram webhook server
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0

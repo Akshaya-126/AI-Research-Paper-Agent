@@ -1,26 +1,24 @@
-import requests
-
 from backend.database.supabase_database import supabase
-from backend.services.config import (
-    OLLAMA_BASE_URL,
-    QWEN_MODEL,
-)
+
 from backend.services.vector_search import (
     retrieve_best_chunks,
     normalize_paper_id,
 )
+
+from backend.services.llm_service import generate_answer
 
 
 # ============================================================
 # RAG SETTINGS
 # ============================================================
 
-# Number of best chunks sent to Qwen.
+# Number of best chunks sent to the LLM.
+#
 # Retrieval and reranking remain unchanged.
 RAG_TOP_K = 3
 
 # Maximum number of characters from each retrieved chunk
-# that will be included in the Qwen context.
+# that will be included in the LLM context.
 MAX_CHUNK_CHARS = 1800
 
 
@@ -40,7 +38,10 @@ def get_paper(paper_id):
         .select(
             "title,abstract,authors,arxiv_url"
         )
-        .eq("paper_id", paper_id)
+        .eq(
+            "paper_id",
+            paper_id
+        )
         .limit(1)
         .execute()
     )
@@ -54,18 +55,19 @@ def get_paper(paper_id):
 
 def build_context(chunks):
     """
-    Build a compact context for Qwen.
+    Build a compact context for the LLM.
 
     The chunks have already been selected by:
+
         1. Vector search
         2. Lexical search
         3. Cross-encoder reranking
 
-    Only the highest-ranked chunks should reach Qwen.
+    Only the highest-ranked chunks should reach the LLM.
 
-    Each chunk is also capped at MAX_CHUNK_CHARS so that
-    unnecessarily large PDF chunks do not make the local
-    Qwen model process an excessive amount of context.
+    Each chunk is capped at MAX_CHUNK_CHARS so that
+    unnecessarily large PDF chunks do not create excessive
+    context.
     """
 
     blocks = []
@@ -82,6 +84,7 @@ def build_context(chunks):
         )
 
         if chunk.get("subsection"):
+
             source += (
                 f" | Subsection: "
                 f"{chunk['subsection']}"
@@ -109,9 +112,9 @@ def build_context(chunks):
 
         if len(text) > MAX_CHUNK_CHARS:
 
-            # Try to avoid cutting a word in half.
             shortened = text[:MAX_CHUNK_CHARS]
 
+            # Try to avoid cutting a word in half.
             last_space = shortened.rfind(" ")
 
             if last_space > 0:
@@ -133,20 +136,24 @@ def build_context(chunks):
 
 
 # ============================================================
-# ASK QWEN
+# ASK GEMINI
 # ============================================================
 
-def ask_qwen(question, context, paper):
+def ask_llm(question, context, paper):
     """
-    Ask Qwen to answer strictly from the supplied
+    Ask Gemini to answer strictly from the supplied
     paper metadata and retrieved paper context.
 
-    Qwen does NOT generate the final Sources section.
+    Gemini does NOT generate the final Sources section.
     Python generates that separately.
     """
 
+    # ========================================================
+    # SYSTEM INSTRUCTION
+    # ========================================================
+
     system = """
-You are a research-paper question answering assistant.
+You are ResearchX AI, a research-paper question answering assistant.
 
 Your job is to answer the user's question using ONLY the
 supplied paper information and retrieved paper context.
@@ -184,17 +191,28 @@ STRICT RULES:
 11. Do not mention information that is not supported by
     the supplied paper context.
 
+12. If the question asks about something unrelated to
+    the selected paper and the retrieved context does not
+    contain the answer, use the exact insufficient-context
+    response from rule 5.
+
+13. Treat the retrieved context as the only evidence source
+    for factual claims about the paper.
+
 The SOURCE numbers correspond exactly to the retrieved
 chunks provided below.
 """
 
     # ========================================================
-    # PROMPT
+    # USER PROMPT
     # ========================================================
 
     prompt = f"""
 PAPER TITLE:
 {paper.get('title', '')}
+
+PAPER AUTHORS:
+{paper.get('authors', '')}
 
 PAPER ABSTRACT:
 {paper.get('abstract', '')}
@@ -209,45 +227,13 @@ ANSWER:
 """
 
     # ========================================================
-    # OLLAMA REQUEST
+    # GEMINI REQUEST
     # ========================================================
 
-    response = requests.post(
-        f"{OLLAMA_BASE_URL}/api/chat",
-
-        json={
-            "model": QWEN_MODEL,
-
-            "messages": [
-                {
-                    "role": "system",
-                    "content": system,
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-
-            "stream": False,
-
-            "options": {
-                # Low temperature gives more deterministic,
-                # evidence-focused answers.
-                "temperature": 0.1,
-            },
-        },
-
-        # Keep the timeout long enough for local CPU inference,
-        # but do not increase it just to hide performance issues.
-        timeout=180,
+    return generate_answer(
+        system_instruction=system,
+        prompt=prompt,
     )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    return data["message"]["content"].strip()
 
 
 # ============================================================
@@ -259,8 +245,8 @@ def build_sources(chunks):
     Generate the final source list from the chunks actually
     retrieved.
 
-    This is intentionally done by Python rather than Qwen so
-    that source information cannot be hallucinated.
+    This is intentionally done by Python rather than Gemini
+    so that source information cannot be hallucinated.
     """
 
     sources = []
@@ -426,7 +412,7 @@ def answer_question(
             ↓
         Context Size Control
             ↓
-        Qwen
+        Gemini
             ↓
         Answer
             ↓
@@ -478,10 +464,10 @@ def answer_question(
     )
 
     # ========================================================
-    # 4. ASK QWEN
+    # 4. ASK GEMINI
     # ========================================================
 
-    answer = ask_qwen(
+    answer = ask_llm(
         question,
         context,
         paper,
