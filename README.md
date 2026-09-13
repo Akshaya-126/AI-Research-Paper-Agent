@@ -818,7 +818,6 @@ GitHub: **Akshaya-126**
 An end-to-end AI agent combining:
 
 **arXiv + AI filtering + PDF processing + RAG + Supabase + Gemini + Telegram + GitHub Actions + Render**
-
 ```
 
 
