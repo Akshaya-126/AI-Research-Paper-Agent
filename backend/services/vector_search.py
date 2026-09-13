@@ -1,25 +1,10 @@
 import re
 
 from backend.database.supabase_database import supabase
-from backend.services.embedding_service import load_embedding_model
-from backend.services.config import (
-    VECTOR_TOP_K,
-    LEXICAL_TOP_K,
-    FINAL_TOP_K,
-)
-from backend.services.reranker import rerank_chunks
+from backend.services.config import FINAL_TOP_K
 
 
 def normalize_paper_id(paper_id):
-    """
-    Convert any supported arXiv identifier into the database format.
-
-    Supported:
-        2609.11929v1
-        https://arxiv.org/abs/2609.11929v1
-        https://arxiv.org/pdf/2609.11929v1.pdf
-    """
-
     paper_id = paper_id.strip()
 
     if "/abs/" in paper_id:
@@ -33,13 +18,6 @@ def normalize_paper_id(paper_id):
 
 
 def extract_query_terms(query):
-    """
-    Extract meaningful terms for lexical search.
-
-    Removes common question words while preserving
-    meaningful research-related words.
-    """
-
     stopwords = {
         "what", "when", "where", "which", "who", "why", "how",
         "was", "were", "are", "is", "the", "a", "an", "and", "or",
@@ -58,65 +36,13 @@ def extract_query_terms(query):
     ]
 
 
-def build_query_variants(query):
+def lexical_search(query, paper_id, top_k=20):
     """
-    Create a small set of generic query representations.
+    Lightweight retrieval for Render.
 
-    The goal is not to hardcode paper sections or topics.
-    Instead, we give both semantic and lexical retrieval
-    slightly different views of the same user question.
-    """
-
-    original = query.strip()
-
-    terms = extract_query_terms(original)
-
-    variants = []
-
-    # Original natural-language question.
-    if original:
-        variants.append(original)
-
-    # Keyword-focused version.
-    if terms:
-        keyword_query = " ".join(terms)
-
-        if keyword_query not in variants:
-            variants.append(keyword_query)
-
-    return variants
-
-
-def vector_search(query, paper_id, top_k=VECTOR_TOP_K):
-    """
-    Semantic search using BGE embeddings.
-    """
-
-    paper_id = normalize_paper_id(paper_id)
-
-    model = load_embedding_model()
-
-    embedding = model.encode(
-        query,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    ).tolist()
-
-    response = supabase.rpc(
-        "match_paper_chunks",
-        {
-            "query_embedding": embedding,
-            "match_count": top_k,
-            "target_paper_id": paper_id,
-        },
-    ).execute()
-
-    return response.data or []
-
-
-def lexical_search(query, paper_id, top_k=LEXICAL_TOP_K):
-    """
-    PostgreSQL full-text search.
+    Uses Supabase PostgreSQL full-text search.
+    No embedding model is loaded.
+    No CrossEncoder is loaded.
     """
 
     paper_id = normalize_paper_id(paper_id)
@@ -126,104 +52,51 @@ def lexical_search(query, paper_id, top_k=LEXICAL_TOP_K):
     if not terms:
         return []
 
-    response = supabase.rpc(
-        "search_paper_chunks_lexical",
-        {
-            "search_query": " ".join(terms),
-            "match_count": top_k,
-            "target_paper_id": paper_id,
-        },
-    ).execute()
-
-    return response.data or []
-
-
-def merge_candidates(vector_results, lexical_results):
-    """
-    Merge vector and lexical candidates by chunk ID.
-    """
-
     candidates = {}
 
-    for item in vector_results:
-        candidates[item["id"]] = dict(item)
+    # Search individual important terms.
+    # This is more tolerant than requiring every query term
+    # to occur in the same chunk.
+    for term in terms:
 
-    for item in lexical_results:
+        response = supabase.rpc(
+            "search_paper_chunks_lexical",
+            {
+                "search_query": term,
+                "match_count": top_k,
+                "target_paper_id": paper_id,
+            },
+        ).execute()
 
-        chunk_id = item["id"]
+        for item in response.data or []:
 
-        if chunk_id in candidates:
+            chunk_id = item["id"]
 
-            candidates[chunk_id]["lexical_score"] = item.get(
+            if chunk_id not in candidates:
+                candidates[chunk_id] = dict(item)
+
+            old_score = candidates[chunk_id].get(
                 "lexical_score",
                 0,
             )
 
-        else:
-            candidates[chunk_id] = dict(item)
+            new_score = item.get(
+                "lexical_score",
+                0,
+            )
 
-    return list(candidates.values())
+            candidates[chunk_id]["lexical_score"] = (
+                old_score + new_score
+            )
 
+    results = list(candidates.values())
 
-def retrieve_candidates(query, paper_id):
-    """
-    Retrieve candidates using multiple generic representations
-    of the same query.
+    results.sort(
+        key=lambda x: x.get("lexical_score", 0),
+        reverse=True,
+    )
 
-    This improves robustness when natural-language wording varies.
-    """
-
-    all_candidates = {}
-
-    query_variants = build_query_variants(query)
-
-    for variant in query_variants:
-
-        vector_results = vector_search(
-            variant,
-            paper_id,
-            VECTOR_TOP_K,
-        )
-
-        lexical_results = lexical_search(
-            variant,
-            paper_id,
-            LEXICAL_TOP_K,
-        )
-
-        candidates = merge_candidates(
-            vector_results,
-            lexical_results,
-        )
-
-        for item in candidates:
-
-            chunk_id = item["id"]
-
-            if chunk_id not in all_candidates:
-
-                all_candidates[chunk_id] = dict(item)
-
-            else:
-
-                # Preserve the strongest lexical score when
-                # the same chunk appears through multiple variants.
-                old_score = all_candidates[chunk_id].get(
-                    "lexical_score",
-                    0,
-                )
-
-                new_score = item.get(
-                    "lexical_score",
-                    0,
-                )
-
-                all_candidates[chunk_id]["lexical_score"] = max(
-                    old_score,
-                    new_score,
-                )
-
-    return list(all_candidates.values())
+    return results[:top_k]
 
 
 def retrieve_best_chunks(
@@ -232,36 +105,20 @@ def retrieve_best_chunks(
     final_top_k=FINAL_TOP_K,
 ):
     """
-    Full retrieval pipeline:
+    Lightweight Render-compatible retrieval.
 
-        query
-          ↓
-        query variants
-          ↓
-        vector + lexical retrieval
-          ↓
-        candidate merge
-          ↓
-        cross-encoder reranking
-          ↓
-        final chunks
+    Retrieval is based on PostgreSQL full-text search.
+    Gemini performs the final reasoning over the retrieved
+    paper sections.
     """
 
-    paper_id = normalize_paper_id(paper_id)
-
-    candidates = retrieve_candidates(
+    results = lexical_search(
         query,
         paper_id,
+        top_k=max(final_top_k * 4, 20),
     )
 
-    if not candidates:
-        return []
-
-    return rerank_chunks(
-        query,
-        candidates,
-        top_k=final_top_k,
-    )
+    return results[:final_top_k]
 
 
 if __name__ == "__main__":
@@ -270,24 +127,19 @@ if __name__ == "__main__":
 
     questions = [
         "What is the main contribution?",
-        "What are the main contributions of this paper?",
-        "What is the paper about?",
         "What are the limitations?",
-        "What are the limitations of this paper?",
+        "What is the methodology?",
+        "What are the experiments?",
     ]
 
-    for q in questions:
+    for question in questions:
 
         print("\n" + "=" * 80)
-        print(q)
+        print(question)
         print("=" * 80)
 
-        print("\nQuery variants:")
-        for variant in build_query_variants(q):
-            print(f"  - {variant}")
-
         results = retrieve_best_chunks(
-            q,
+            question,
             paper_id,
             final_top_k=5,
         )
@@ -300,16 +152,13 @@ if __name__ == "__main__":
 
         for i, chunk in enumerate(results, 1):
 
-            score = chunk.get(
-                "rerank_score",
-                0,
-            )
-
             print(
                 f"{i}. "
                 f"chunk={chunk['chunk_index']} "
                 f"section={chunk.get('section')} "
-                f"pages={chunk.get('page_start')}-"
+                f"pages="
+                f"{chunk.get('page_start')}-"
                 f"{chunk.get('page_end')} "
-                f"score={score:.4f}"
+                f"score="
+                f"{chunk.get('lexical_score', 0):.4f}"
             )

@@ -16,11 +16,11 @@ RUN apt-get update && apt-get install -y \
 
 # Copy dependency file first
 # This allows Docker to cache the dependency layer
-COPY requirements.txt .
+COPY requirements-render.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements-render.txt
 
 # Copy the project
 COPY . .

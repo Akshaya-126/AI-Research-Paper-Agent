@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+python-telegram-bot
+supabase
+python-dotenv
+google-genai
