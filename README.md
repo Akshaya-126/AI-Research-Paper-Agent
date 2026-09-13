@@ -4,6 +4,10 @@
 
 Users can then select a paper and ask **natural-language questions** about it. ResearchX AI retrieves relevant content from the selected paper and uses **Google Gemini** to generate a concise, grounded answer with section and page references.
 
+An end-to-end AI agent combining:
+
+**arXiv · AI Filtering · PDF Processing · RAG · Supabase · Gemini · Telegram · GitHub Actions · Render**
+
 ---
 
 ## 🚀 What ResearchX AI Does
@@ -811,13 +815,5 @@ GitHub: **Akshaya-126**
 
 ---
 
-## ⭐ Project
-
-**ResearchX AI — AI Research Paper Intelligence Agent**
-
-An end-to-end AI agent combining:
-
-**arXiv + AI filtering + PDF processing + RAG + Supabase + Gemini + Telegram + GitHub Actions + Render**
-```
 
 
