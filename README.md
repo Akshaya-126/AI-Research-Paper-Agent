@@ -1,121 +1,824 @@
-# AI Research Paper Agent
+# 🔬 ResearchX AI — AI Research Paper Intelligence Agent
 
-A clean end-to-end research-paper assistant:
+**ResearchX AI** is an autonomous AI research assistant that monitors **arXiv** for newly published AI research papers, identifies relevant papers, processes their full PDFs, stores searchable paper knowledge in **Supabase**, and delivers new-paper notifications through **Telegram**.
 
-arXiv → AI filtering → PDF → text/section extraction → chunks → BGE embeddings → Supabase/pgvector → hybrid retrieval → cross-encoder reranking → Qwen → Telegram
+Users can then select a paper and ask **natural-language questions** about it. ResearchX AI retrieves relevant content from the selected paper and uses **Google Gemini** to generate a concise, grounded answer with section and page references.
 
-## 1. Requirements
+---
 
-- Python 3.11+ recommended
-- A Supabase project
-- A Telegram bot token
-- Qwen available through Ollama (recommended model: `qwen2.5:7b` or another Qwen model you have installed)
-- Internet access for arXiv/PDF/model downloads
+## 🚀 What ResearchX AI Does
 
-## 2. Setup
+ResearchX AI automates the research-paper workflow:
+
+```text
+        arXiv
+          │
+          ▼
+   AI Relevance Filter
+          │
+          ▼
+      New Paper?
+          │
+          ▼
+      Download PDF
+          │
+          ▼
+    Extract Page Text
+          │
+          ▼
+   Structure-Aware Chunking
+          │
+          ▼
+    BGE Embeddings
+          │
+          ▼
+      Supabase
+          │
+          ▼
+   Telegram Notification
+          │
+          ▼
+     Select Paper
+          │
+          ▼
+   Ask Any Question
+          │
+          ▼
+   Retrieve Relevant Chunks
+          │
+          ▼
+       Gemini
+          │
+          ▼
+   Grounded Answer
+          │
+          ▼
+  Section/Page Sources
+```
+
+---
+
+# ✨ Key Features
+
+### 📚 Automated arXiv Monitoring
+
+ResearchX AI periodically checks arXiv for newly submitted papers in AI-related categories such as:
+
+* Machine Learning
+* Artificial Intelligence
+* Computer Vision
+* Natural Language Processing
+* Robotics
+* Neural Networks
+* Information Retrieval
+* Multi-Agent Systems
+* Statistical Machine Learning
+
+---
+
+### 🤖 AI-Relevance Filtering
+
+The system uses a lightweight two-stage filtering strategy:
+
+```text
+arXiv Category
+      ↓
+Title + Abstract
+      ↓
+AI Topic Detection
+      ↓
+AI-Relevant Paper
+```
+
+A paper must belong to an AI-related category and contain relevant AI terminology in its title or abstract.
+
+This helps reduce unrelated papers from broad research categories.
+
+---
+
+### 📄 Full-Paper Processing
+
+For each newly detected relevant paper, ResearchX AI:
+
+1. Downloads the arXiv PDF.
+2. Extracts text page by page.
+3. Detects major paper sections.
+4. Creates searchable chunks.
+5. Generates embeddings.
+6. Stores the chunks and metadata in Supabase.
+
+The system preserves metadata such as:
+
+* Section
+* Subsection
+* Page number
+* Paper ID
+* Chunk index
+
+This allows answers to be traced back to the paper.
+
+---
+
+### 🧠 Structure-Aware Paper Processing
+
+Research papers are not treated as one large block of text.
+
+The ingestion pipeline preserves document structure:
+
+```text
+Paper
+ │
+ ├── Abstract
+ │
+ ├── Introduction
+ │
+ ├── Related Work
+ │
+ ├── Methodology
+ │
+ ├── Experiments
+ │
+ ├── Results
+ │
+ ├── Discussion
+ │
+ ├── Limitations
+ │
+ └── Conclusion
+```
+
+Sections and pages are stored as metadata alongside each chunk.
+
+The retrieval system can then search the paper regardless of which section the information belongs to.
+
+---
+
+# 🔎 Research Paper Question Answering
+
+After selecting a paper through Telegram, the user can ask arbitrary questions.
+
+For example:
+
+```text
+What is this paper about?
+
+What methodology did the authors use?
+
+What datasets were used?
+
+What are the main results?
+
+What are the limitations?
+
+Why did the authors propose this approach?
+
+What future work is suggested?
+```
+
+There are **no fixed question buttons**.
+
+The user can ask questions naturally.
+
+---
+
+# 🧩 RAG Architecture
+
+ResearchX AI uses Retrieval-Augmented Generation (RAG).
+
+The current lightweight question-answering pipeline is:
+
+```text
+User Question
+      │
+      ▼
+Supabase PostgreSQL
+      │
+      ▼
+Lexical Retrieval
+      │
+      ▼
+Relevant Paper Chunks
+      │
+      ▼
+Context Size Control
+      │
+      ▼
+Google Gemini
+      │
+      ▼
+Grounded Answer
+      │
+      ▼
+Python-Generated Sources
+```
+
+The selected paper is used as the retrieval boundary, so questions are answered using content belonging to that paper.
+
+---
+
+# 🎯 Grounded Answers
+
+Gemini is instructed to answer only from the supplied paper information and retrieved paper context.
+
+The system prevents the model from:
+
+* Using outside knowledge
+* Inventing experiments
+* Inventing datasets
+* Inventing results
+* Inventing numbers
+* Inventing authors
+* Inventing methodologies
+* Creating unsupported conclusions
+* Creating fake page numbers
+* Creating fake source references
+
+If the retrieved context does not contain enough information, the system responds:
+
+> The available paper context does not contain enough information to answer this.
+
+---
+
+# 📌 Source Attribution
+
+Sources are generated by the application rather than by Gemini.
+
+For example:
+
+```text
+The paper proposes an evidence-bounded approach for
+evaluating AI systems...
+
+Sources:
+• Introduction (pp. 2–3)
+• Methodology (p. 4)
+```
+
+This prevents the LLM from inventing page numbers or source locations.
+
+The source metadata is obtained directly from the retrieved chunks stored in Supabase.
+
+---
+
+# 📱 Telegram Interface
+
+ResearchX AI uses Telegram as the user interface.
+
+When a new paper is detected, the bot sends:
+
+```text
+🆕 New AI Research Paper
+
+Paper Title
+
+[ 📖 Ask about this paper ]
+```
+
+After selecting the paper:
+
+```text
+✅ Paper selected!
+
+📖 Paper Title
+
+You can now ask me anything about this paper.
+```
+
+The user can then ask questions freely.
+
+---
+
+# 🗃️ Database
+
+ResearchX AI uses **Supabase PostgreSQL** with the `pgvector` extension.
+
+### `papers`
+
+Stores paper-level metadata:
+
+```text
+paper_id
+title
+abstract
+authors
+published_at
+arxiv_url
+pdf_url
+category
+created_at
+```
+
+### `paper_chunks`
+
+Stores processed paper content:
+
+```text
+paper_id
+chunk_index
+section
+subsection
+page_start
+page_end
+chunk_text
+embedding
+created_at
+```
+
+### `telegram_subscribers`
+
+Stores Telegram users who interact with the bot.
+
+### `telegram_sessions`
+
+Stores the currently selected paper for each Telegram chat.
+
+---
+
+# ☁️ Deployment Architecture
+
+ResearchX AI is split into two workloads.
+
+## 1. GitHub Actions — Paper Processing
+
+GitHub Actions performs the heavy daily processing:
+
+```text
+GitHub Actions
+      │
+      ▼
+arXiv
+      │
+      ▼
+AI Filtering
+      │
+      ▼
+PDF Processing
+      │
+      ▼
+BGE Embeddings
+      │
+      ▼
+Supabase
+      │
+      ▼
+Telegram Notification
+```
+
+The workflow runs daily and can also be triggered manually.
+
+Current schedule:
+
+```text
+00:15 UTC
+≈ 05:45 AM IST
+```
+
+The exact arrival time of an arXiv paper cannot be guaranteed because arXiv indexing and publication timing are external processes.
+
+---
+
+## 2. Render — Telegram API Service
+
+Render hosts the lightweight FastAPI service:
+
+```text
+Telegram
+    │
+    ▼
+Render
+    │
+    ▼
+FastAPI
+    │
+    ▼
+Supabase Retrieval
+    │
+    ▼
+Gemini
+    │
+    ▼
+Telegram
+```
+
+The Render service handles:
+
+* Telegram webhook
+* `/start`
+* `/papers`
+* Paper selection
+* User questions
+* RAG retrieval
+* Gemini responses
+* Source formatting
+
+The heavy embedding and PDF-processing dependencies are not loaded by the Render service.
+
+This keeps the deployment within the Render free-tier memory constraint.
+
+---
+
+# 🛠️ Technology Stack
+
+| Component        | Technology              |
+| ---------------- | ----------------------- |
+| Paper Source     | arXiv                   |
+| Language         | Python                  |
+| API              | FastAPI                 |
+| Database         | Supabase PostgreSQL     |
+| Vector Storage   | pgvector                |
+| Embeddings       | BAAI BGE-small-en-v1.5  |
+| LLM              | Google Gemini 2.5 Flash |
+| Telegram         | python-telegram-bot     |
+| PDF Extraction   | pypdf                   |
+| ML/NLP           | Sentence Transformers   |
+| Deployment       | Render                  |
+| Automation       | GitHub Actions          |
+| Containerization | Docker                  |
+
+---
+
+# 📁 Project Structure
+
+```text
+AI-Research-Paper-Agent/
+│
+├── backend/
+│   │
+│   ├── database/
+│   │   └── supabase_database.py
+│   │
+│   ├── services/
+│   │   ├── config.py
+│   │   ├── paper_retriever.py
+│   │   ├── ai_relevance_agent.py
+│   │   ├── new_paper_detector.py
+│   │   ├── pdf_downloader.py
+│   │   ├── pdf_text_extractor.py
+│   │   ├── paper_chunker.py
+│   │   ├── embedding_service.py
+│   │   ├── vector_database.py
+│   │   ├── vector_search.py
+│   │   ├── reranker.py
+│   │   ├── rag_service.py
+│   │   ├── paper_pipeline.py
+│   │   ├── telegram_bot.py
+│   │   └── telegram_notifier.py
+│   │
+│   └── app.py
+│
+├── database/
+│   └── schema.sql
+│
+├── tests/
+│   └── test_config.py
+│
+├── data/
+│   └── papers/
+│
+├── .github/
+│   └── workflows/
+│       └── daily_agent.yml
+│
+├── .env.example
+├── .gitignore
+├── Dockerfile
+├── .dockerignore
+├── requirements.txt
+├── requirements-render.txt
+└── README.md
+```
+
+---
+
+# ⚙️ Local Setup
+
+## 1. Clone the repository
+
+```bash
+git clone https://github.com/Akshaya-126/AI-Research-Paper-Agent.git
+cd AI-Research-Paper-Agent
+```
+
+## 2. Create a virtual environment
 
 ```bash
 python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
 ```
 
-Edit `.env`.
+Activate it on Windows:
 
-Start Ollama and make sure your Qwen model is available:
+```cmd
+venv\Scripts\activate
+```
+
+## 3. Install dependencies
 
 ```bash
-ollama pull qwen2.5:7b
-ollama serve
+pip install -r requirements.txt
 ```
 
-## 3. Database
+## 4. Configure environment variables
 
-Open Supabase SQL Editor and run:
+Create a `.env` file:
+
+```text
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_key
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+Never commit `.env` to GitHub.
+
+---
+
+# 🗄️ Database Setup
+
+Open the Supabase SQL Editor and execute:
 
 ```text
 database/schema.sql
 ```
 
-## 4. Test the pipeline
+This creates:
 
-Run:
+* `papers`
+* `paper_chunks`
+* `telegram_subscribers`
+* `telegram_sessions`
+* RAG search functions
+* pgvector support
 
-```bash
-python -m backend.services.paper_pipeline
+---
+
+# ▶️ Run Locally
+
+Start the FastAPI server:
+
+```cmd
+venv\Scripts\python.exe -m uvicorn backend.app:app --host 0.0.0.0 --port 8000
 ```
 
-Then test retrieval:
+Health check:
 
-```bash
-python -m backend.services.vector_search
+```text
+http://localhost:8000/health
 ```
 
-Then test RAG:
+Expected response:
 
-```bash
-python -m backend.services.rag_service
+```json
+{
+  "status": "healthy"
+}
 ```
 
-## 5. Start Telegram bot
+---
+
+# 🐳 Docker
+
+Build the image:
 
 ```bash
-python -m backend.services.telegram_bot
+docker build -t researchx-ai .
 ```
 
-## 6. Start the arXiv monitor
+Run it:
+
+```bash
+docker run --env-file .env -p 8000:8000 researchx-ai
+```
+
+The Docker container uses the Render `PORT` environment variable when deployed.
+
+---
+
+# 🔐 GitHub Actions Configuration
+
+Add the following GitHub repository secrets:
+
+```text
+SUPABASE_URL
+SUPABASE_KEY
+TELEGRAM_BOT_TOKEN
+```
+
+The daily workflow installs the full processing dependencies and runs:
 
 ```bash
 python -m backend.services.new_paper_detector
 ```
 
-The monitor checks arXiv periodically and ingests relevant papers. Telegram users can ask arbitrary questions about a selected paper.
+A manual workflow run is also available through GitHub Actions.
 
-## Architecture
+---
+
+# 📲 Telegram Webhook
+
+The Telegram bot communicates with the deployed FastAPI service using a webhook.
+
+The webhook endpoint is:
 
 ```text
-                    arXiv
-                      |
-               Paper Retriever
-                      |
-             AI Relevance Filter
-                      |
-                    PDF
-                      |
-          +-----------+-----------+
-          |                       |
-     PDF Extraction         Paper Metadata
-          |
-   Structure-aware Chunks
-          |
-    BGE-small-en-v1.5
-          |
-     Supabase/pgvector
-          |
-     +----+----------------+
-     |                     |
-Vector Retrieval      Lexical Retrieval
-     |                     |
-     +---------+-----------+
-               |
-        Candidate Pool
-               |
-      Cross-Encoder Reranker
-               |
-           Top Chunks
-               |
-        Context Builder
-               |
-             Qwen
-               |
-        Grounded Answer
-               |
-           Telegram
+POST /telegram/webhook
 ```
 
-## Important
+Telegram sends incoming updates to the deployed Render service.
 
-This repository deliberately avoids paper-specific rules. Sections are metadata for context/source attribution, not hard-coded retrieval routes.
+---
 
-For production deployment, move secrets to environment variables and tighten Supabase RLS policies.
+# 🔄 Complete End-to-End Workflow
+
+### Step 1 — arXiv Monitoring
+
+The agent searches recent arXiv submissions.
+
+### Step 2 — AI Filtering
+
+Papers are checked using their category, title, and abstract.
+
+### Step 3 — New Paper Detection
+
+Already-ingested papers are skipped.
+
+### Step 4 — PDF Processing
+
+The new paper's PDF is downloaded and converted into page-level text.
+
+### Step 5 — Chunking
+
+The extracted text is split into searchable chunks while preserving section and page metadata.
+
+### Step 6 — Embedding
+
+BGE embeddings are generated for the chunks.
+
+### Step 7 — Database Storage
+
+Paper metadata, chunks, and embeddings are stored in Supabase.
+
+### Step 8 — Telegram Notification
+
+The bot sends a notification containing the paper title and selection button.
+
+### Step 9 — Paper Selection
+
+The user selects the paper they want to investigate.
+
+### Step 10 — Natural-Language Question
+
+The user asks any question about the selected paper.
+
+### Step 11 — Retrieval
+
+Relevant chunks are retrieved from Supabase.
+
+### Step 12 — Gemini
+
+Gemini generates an answer using the supplied paper information and retrieved context.
+
+### Step 13 — Source Generation
+
+Python generates the final section/page sources from the retrieved chunks.
+
+### Step 14 — Telegram Response
+
+The answer and sources are returned to the user.
+
+---
+
+# 🧠 Design Principles
+
+ResearchX AI follows several important design principles.
+
+### 1. Paper-first research
+
+Answers are grounded in the selected paper rather than general model knowledge.
+
+### 2. Structure-aware ingestion
+
+Paper structure is preserved during PDF processing.
+
+### 3. Structure-independent retrieval
+
+The user does not need to specify which section contains the answer.
+
+For example:
+
+```text
+"What dataset did they use?"
+```
+
+does not require the system to search only an "Experiments" section.
+
+The retrieval system finds relevant content based on the query.
+
+### 4. Application-controlled sources
+
+Source attribution is generated programmatically instead of trusting the LLM to create page references.
+
+### 5. Lightweight serving
+
+Heavy paper-processing operations are separated from the online Telegram service.
+
+```text
+Heavy Processing → GitHub Actions
+
+Interactive Q&A → Render
+```
+
+---
+
+# 📌 Current Limitations
+
+* arXiv indexing timing means a paper cannot be guaranteed to appear at exactly midnight.
+* The daily workflow runs once per day.
+* Render's free service may spin down during inactivity.
+* Current online retrieval is optimized for low-memory deployment and uses PostgreSQL lexical retrieval.
+* PDF extraction quality depends on the structure and formatting of the original paper.
+* Papers with complex mathematical layouts, scanned pages, or unusual formatting may not extract perfectly.
+* Gemini availability can occasionally be affected by temporary API service limits.
+
+---
+
+# 🔮 Future Improvements
+
+Possible future improvements include:
+
+* Improved semantic retrieval on the serving side
+* Better mathematical-content extraction
+* Table-aware PDF extraction
+* Figure and diagram understanding
+* Improved section detection
+* Conversation memory for multi-turn paper discussions
+* Paper comparison across multiple papers
+* Citation-level evidence extraction
+* Research trend analysis
+* Personalized paper recommendations
+* Voice-based paper interaction
+
+---
+
+# 🎯 Project Objective
+
+ResearchX AI aims to reduce the time required to discover and understand new AI research.
+
+Instead of manually:
+
+```text
+Search arXiv
+   ↓
+Open paper
+   ↓
+Download PDF
+   ↓
+Read abstract
+   ↓
+Search sections
+   ↓
+Find relevant information
+   ↓
+Understand the result
+```
+
+ResearchX AI provides:
+
+```text
+New Paper
+   ↓
+Notification
+   ↓
+Select Paper
+   ↓
+Ask a Question
+   ↓
+Get a Grounded Answer
+   ↓
+See the Source Section/Page
+```
+
+---
+
+## 👩‍💻 Author
+
+**Akshaya P.**
+
+B.E. Computer Science and Engineering
+
+Kumaraguru College of Technology, Coimbatore
+
+GitHub: **Akshaya-126**
+
+---
+
+## ⭐ Project
+
+**ResearchX AI — AI Research Paper Intelligence Agent**
+
+An end-to-end AI agent combining:
+
+**arXiv + AI filtering + PDF processing + RAG + Supabase + Gemini + Telegram + GitHub Actions + Render**
+
+```
+
+
