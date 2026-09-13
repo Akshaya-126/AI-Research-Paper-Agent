@@ -1,0 +1,15 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+.env
+
+.git/
+.github/
+
+.vscode/
+
+data/papers/*.pdf
+
+*.log
